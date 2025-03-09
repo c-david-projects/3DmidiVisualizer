@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solid Dark MIDI Visualizer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: black; }
+        #status { 
+            position: absolute; 
+            top: 10px; 
+            left: 10px; 
+            color: white; 
+            font-family: Arial, sans-serif; 
+            z-index: 10;
+        }
+        #outputSelect { 
+            position: absolute; 
+            top: 30px; 
+            left: 10px; 
+            background: rgba(0,0,0,0.7); 
+            color: white; 
+            z-index: 10;
+        }
+        #rendererContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Checking MIDI support...</div>
+    <select id="outputSelect">
+        <option value="">Select MIDI Output</option>
+    </select>
+    <div id="rendererContainer"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        // Three.js setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x1a1a1a, 1); // Solid dark gray background
+        document.getElementById('rendererContainer').appendChild(renderer.domElement);
+
+        camera.position.z = 150;
+
+        const status = document.getElementById('status');
+        const outputSelect = document.getElementById('outputSelect');
+        let midiAccess = null;
+        let selectedOutput = null;
+        let objects = [];
+        let lines = [];
+
+        // MIDI setup
+        if (navigator.requestMIDIAccess) {
+            navigator.requestMIDIAccess()
+                .then(onMIDISuccess, onMIDIFailure);
+        } else {
+            status.textContent = 'Web MIDI API not supported.';
+        }
+
+        function onMIDISuccess(access) {
+            midiAccess = access;
+            status.textContent = 'MIDI connected. Waiting for input...';
+            
+            const inputs = midiAccess.inputs.values();
+            for (let input of inputs) {
+                input.onmidimessage = handleMIDIMessage;
+            }
+
+            const outputs = midiAccess.outputs.values();
+            for (let output of outputs) {
+                const option = document.createElement('option');
+                option.value = output.id;
+                option.textContent = output.name;
+                outputSelect.appendChild(option);
+            }
+
+            outputSelect.onchange = (e) => {
+                selectedOutput = midiAccess.outputs.get(e.target.value);
+                status.textContent = `Connected to: ${selectedOutput ? selectedOutput.name : 'None'}`;
+            };
+        }
+
+        function onMIDIFailure(error) {
+            status.textContent = 'Failed to access MIDI devices: ' + error.message;
+            console.error('MIDI Failure:', error);
+        }
+
+        function handleMIDIMessage(message) {
+            const [command, note, velocity] = message.data;
+            const type = command & 0xf0;
+
+            if (selectedOutput) {
+                selectedOutput.send(message.data);
+            }
+
+            if (type === 144 && velocity > 0) {
+                if (Math.random() < 0.7) { // Keep higher spawn frequency
+                    createObject(note, velocity);
+                    createLine(note, velocity);
+                    createRandomLine(note, velocity);
+                }
+            }
+        }
+
+        // Object creation (big 3D shapes)
+        const shapeGeometries = [
+            new THREE.BoxGeometry(20, 20, 20),
+            new THREE.TetrahedronGeometry(15),
+            new THREE.DodecahedronGeometry(15),
+            new THREE.OctahedronGeometry(15),
+            new THREE.IcosahedronGeometry(15),
+            new THREE.TorusGeometry(15, 5, 8, 12)
+        ];
+
+        function createObject(note, velocity) {
+            const geometry = shapeGeometries[Math.floor(Math.random() * shapeGeometries.length)];
+            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
+            const edges = new THREE.EdgesGeometry(geometry);
+            const obj = new THREE.LineSegments(edges, material);
+
+            obj.position.set(
+                (Math.random() - 0.5) * 150,
+                (Math.random() - 0.5) * 100,
+                (Math.random() - 0.5) * 150
+            );
+            
+            const baseScale = velocity / 127 * 3 + 1;
+            obj.scale.setScalar(baseScale);
+
+            obj.userData = {
+                life: 0.5, // Short life for instant disappearance
+                rotationSpeed: (Math.random() - 0.5) * 0.1,
+                blinkSpeed: Math.random() * 0.1 + 0.05,
+                time: 0
+            };
+
+            scene.add(obj);
+            objects.push(obj);
+        }
+
+        // Line creation (original)
+        function createLine(note, velocity) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array([
+                (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 100, (Math.random() - 0.5) * 150,
+                (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 100, (Math.random() - 0.5) * 150
+            ]);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
+            const line = new THREE.Line(geometry, material);
+
+            line.userData = {
+                life: 0.5 // Short life for instant disappearance
+            };
+
+            scene.add(line);
+            lines.push(line);
+        }
+
+        // Additional random lines
+        function createRandomLine(note, velocity) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array([
+                (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 200,
+                (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 200
+            ]);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
+            const line = new THREE.Line(geometry, material);
+
+            line.userData = {
+                life: Math.random() * 0.5 + 0.3 // Random lifespan 0.3-0.8s
+            };
+
+            scene.add(line);
+            lines.push(line);
+        }
+
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update objects
+            for (let i = objects.length - 1; i >= 0; i--) {
+                const obj = objects[i];
+                
+                obj.rotation.x += obj.userData.rotationSpeed;
+                obj.rotation.y += obj.userData.rotationSpeed;
+
+                obj.userData.time += obj.userData.blinkSpeed;
+                const blink = Math.sin(obj.userData.time) * 0.5 + 0.5;
+                obj.scale.setScalar(obj.scale.x * (0.5 + blink));
+
+                obj.userData.life -= 0.016;
+                
+                if (obj.userData.life <= 0) {
+                    scene.remove(obj);
+                    objects.splice(i, 1);
+                }
+            }
+
+            // Update lines
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i];
+                line.userData.life -= 0.016;
+                
+                if (line.userData.life <= 0) {
+                    scene.remove(line);
+                    lines.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
