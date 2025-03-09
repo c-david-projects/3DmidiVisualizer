@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Solid Dark MIDI Visualizer</title>
+    <title>MIDI-Synced Screen-Filling Visualizer</title>
     <style>
         body { margin: 0; overflow: hidden; background: black; }
         #status { 
@@ -39,20 +39,19 @@
     <script>
         // Three.js setup
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setClearColor(0x1a1a1a, 1); // Solid dark gray background
         document.getElementById('rendererContainer').appendChild(renderer.domElement);
 
-        camera.position.z = 150;
+        camera.position.z = 600;
 
         const status = document.getElementById('status');
         const outputSelect = document.getElementById('outputSelect');
         let midiAccess = null;
         let selectedOutput = null;
-        let objects = [];
-        let lines = [];
+        let activeObjects = {}; // Store shapes by note number
 
         // MIDI setup
         if (navigator.requestMIDIAccess) {
@@ -98,123 +97,122 @@
                 selectedOutput.send(message.data);
             }
 
-            if (type === 144 && velocity > 0) {
-                if (Math.random() < 0.7) { // Keep higher spawn frequency
-                    createObject(note, velocity);
-                    createLine(note, velocity);
-                    createRandomLine(note, velocity);
+            if (type === 144 && velocity > 0) { // Note On
+                if (Math.random() < 0.7) {
+                    createShapesForNote(note, velocity);
                 }
+            } else if (type === 128 || (type === 144 && velocity === 0)) { // Note Off
+                removeShapesForNote(note);
             }
         }
 
-        // Object creation (big 3D shapes)
+        // Screen-filling abstract 3D shape creation
         const shapeGeometries = [
-            new THREE.BoxGeometry(20, 20, 20),
-            new THREE.TetrahedronGeometry(15),
-            new THREE.DodecahedronGeometry(15),
-            new THREE.OctahedronGeometry(15),
-            new THREE.IcosahedronGeometry(15),
-            new THREE.TorusGeometry(15, 5, 8, 12)
+            new THREE.TorusKnotGeometry(150, 40, 20, 4),
+            new THREE.RingGeometry(100, 200, 8),
+            new THREE.ConeGeometry(150, 300, 5),
+            new THREE.CylinderGeometry(100, 150, 200, 7)
         ];
 
-        function createObject(note, velocity) {
-            const geometry = shapeGeometries[Math.floor(Math.random() * shapeGeometries.length)];
-            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-            const edges = new THREE.EdgesGeometry(geometry);
-            const obj = new THREE.LineSegments(edges, material);
+        const abstractGeometries = [
+            new THREE.TorusKnotGeometry(120, 30, 15, 3),
+            new THREE.RingGeometry(80, 160, 6),
+            new THREE.ConeGeometry(120, 240, 4),
+            new THREE.CylinderGeometry(80, 120, 160, 6)
+        ];
 
-            obj.position.set(
-                (Math.random() - 0.5) * 150,
-                (Math.random() - 0.5) * 100,
-                (Math.random() - 0.5) * 150
+        const cloneGeometries = [
+            new THREE.TorusKnotGeometry(80, 20, 10, 3),
+            new THREE.RingGeometry(50, 100, 5),
+            new THREE.ConeGeometry(80, 160, 3),
+            new THREE.CylinderGeometry(50, 80, 100, 4)
+        ];
+
+        function createShapesForNote(note, velocity) {
+            if (activeObjects[note]) {
+                removeShapesForNote(note); // Clear existing shapes for this note
+            }
+
+            const shapes = [];
+
+            // Main shape
+            const mainGeometry = shapeGeometries[Math.floor(Math.random() * shapeGeometries.length)];
+            const mainMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+            const mainEdges = new THREE.EdgesGeometry(mainGeometry);
+            const mainObj = new THREE.LineSegments(mainEdges, mainMaterial);
+            mainObj.position.set(
+                (Math.random() - 0.5) * 800,
+                (Math.random() - 0.5) * 600,
+                (Math.random() - 0.5) * 800
             );
-            
-            const baseScale = velocity / 127 * 3 + 1;
-            obj.scale.setScalar(baseScale);
+            const mainScale = velocity / 127 * 3 + 1;
+            mainObj.scale.setScalar(mainScale);
+            scene.add(mainObj);
+            shapes.push(mainObj);
 
-            obj.userData = {
-                life: 0.5, // Short life for instant disappearance
-                rotationSpeed: (Math.random() - 0.5) * 0.1,
-                blinkSpeed: Math.random() * 0.1 + 0.05,
-                time: 0
-            };
+            // Abstract shape
+            const absGeometry = abstractGeometries[Math.floor(Math.random() * abstractGeometries.length)];
+            const absMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+            const absEdges = new THREE.EdgesGeometry(absGeometry);
+            const absShape = new THREE.LineSegments(absEdges, absMaterial);
+            absShape.position.set(
+                (Math.random() - 0.5) * 800,
+                (Math.random() - 0.5) * 600,
+                (Math.random() - 0.5) * 800
+            );
+            const absScale = velocity / 127 * 2.5 + 0.8;
+            absShape.scale.setScalar(absScale);
+            scene.add(absShape);
+            shapes.push(absShape);
 
-            scene.add(obj);
-            objects.push(obj);
+            // Random abstract shape
+            const randAbsGeometry = abstractGeometries[Math.floor(Math.random() * abstractGeometries.length)];
+            const randAbsMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+            const randAbsEdges = new THREE.EdgesGeometry(randAbsGeometry);
+            const randAbsShape = new THREE.LineSegments(randAbsEdges, randAbsMaterial);
+            randAbsShape.position.set(
+                (Math.random() - 0.5) * 1000,
+                (Math.random() - 0.5) * 750,
+                (Math.random() - 0.5) * 1000
+            );
+            const randAbsScale = velocity / 127 * 3 + 1;
+            randAbsShape.scale.setScalar(randAbsScale);
+            scene.add(randAbsShape);
+            shapes.push(randAbsShape);
+
+            // Random clones
+            const numClones = Math.floor(Math.random() * 4) + 2;
+            for (let i = 0; i < numClones; i++) {
+                const cloneGeometry = cloneGeometries[Math.floor(Math.random() * cloneGeometries.length)];
+                const cloneMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+                const cloneEdges = new THREE.EdgesGeometry(cloneGeometry);
+                const clone = new THREE.LineSegments(cloneEdges, cloneMaterial);
+                clone.position.set(
+                    (Math.random() - 0.5) * 1000,
+                    (Math.random() - 0.5) * 750,
+                    (Math.random() - 0.5) * 1000
+                );
+                const cloneScale = velocity / 127 * 2 + 0.6;
+                clone.scale.setScalar(cloneScale);
+                scene.add(clone);
+                shapes.push(clone);
+            }
+
+            activeObjects[note] = shapes;
         }
 
-        // Line creation (original)
-        function createLine(note, velocity) {
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array([
-                (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 100, (Math.random() - 0.5) * 150,
-                (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 100, (Math.random() - 0.5) * 150
-            ]);
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-            const line = new THREE.Line(geometry, material);
-
-            line.userData = {
-                life: 0.5 // Short life for instant disappearance
-            };
-
-            scene.add(line);
-            lines.push(line);
-        }
-
-        // Additional random lines
-        function createRandomLine(note, velocity) {
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array([
-                (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 200,
-                (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 150, (Math.random() - 0.5) * 200
-            ]);
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-            const line = new THREE.Line(geometry, material);
-
-            line.userData = {
-                life: Math.random() * 0.5 + 0.3 // Random lifespan 0.3-0.8s
-            };
-
-            scene.add(line);
-            lines.push(line);
+        function removeShapesForNote(note) {
+            if (activeObjects[note]) {
+                activeObjects[note].forEach(shape => {
+                    scene.remove(shape);
+                });
+                delete activeObjects[note];
+            }
         }
 
         // Animation
         function animate() {
             requestAnimationFrame(animate);
-
-            // Update objects
-            for (let i = objects.length - 1; i >= 0; i--) {
-                const obj = objects[i];
-                
-                obj.rotation.x += obj.userData.rotationSpeed;
-                obj.rotation.y += obj.userData.rotationSpeed;
-
-                obj.userData.time += obj.userData.blinkSpeed;
-                const blink = Math.sin(obj.userData.time) * 0.5 + 0.5;
-                obj.scale.setScalar(obj.scale.x * (0.5 + blink));
-
-                obj.userData.life -= 0.016;
-                
-                if (obj.userData.life <= 0) {
-                    scene.remove(obj);
-                    objects.splice(i, 1);
-                }
-            }
-
-            // Update lines
-            for (let i = lines.length - 1; i >= 0; i--) {
-                const line = lines[i];
-                line.userData.life -= 0.016;
-                
-                if (line.userData.life <= 0) {
-                    scene.remove(line);
-                    lines.splice(i, 1);
-                }
-            }
-
             renderer.render(scene, camera);
         }
 
